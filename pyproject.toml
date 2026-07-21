@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ohca-llm"
+version = "6.0.0"
+description = "Zero-shot LLM pipeline for detecting out-of-hospital cardiac arrest from emergency department notes."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pandas>=2.0",
+    "requests>=2.31",
+]
+
+[tool.setuptools]
+packages = ["ohca_llm"]
+
+[tool.setuptools.package-dir]
+ohca_llm = "."

@@ -1,0 +1,120 @@
+"""
+Configuration and constants for the OHCA LLM pipeline.
+"""
+
+# ── Ollama settings ───────────────────────────────────────────────────────────
+OLLAMA_MODEL   = "llama3.2"        # Model tag to pull/run
+OLLAMA_URL     = "http://localhost:11434/api/generate"
+TEMPERATURE    = 0.0               # Deterministic inference
+SEED           = 42
+MAX_TOKENS     = 400               # Per-step response cap
+
+# ── Keyword gate ─────────────────────────────────────────────────────────────
+# Notes must contain ≥1 keyword to reach the LLM
+CARDIAC_KEYWORDS = [
+    "cardiac arrest",
+    "cardiopulmonary arrest",
+    "cpr",
+    "pulseless",
+    "rosc",
+    "return of spontaneous circulation",
+    "defibrillat",
+    "asystole",
+    "vfib",
+    "v-fib",
+    "ventricular fibrillation",
+    "ventricular tachycardia",
+    "v-tach",
+    "vtach",
+    "found unresponsive",
+    "found down",
+    "collapsed",
+    "pea",
+    "pulseless electrical activity",
+    "chest compressions",
+    "resuscitat",
+    "acls",
+    "bls",
+    "aed",
+    "automated external defibrillat",
+    "code blue",
+]
+
+# ── PMH shortcut ─────────────────────────────────────────────────────────────
+# If note contains ONLY historical arrest language (no current indicators),
+# skip LLM and label as Not OHCA immediately.
+PMH_ONLY_PATTERNS = [
+    r"s/p\s+cardiac\s+arrest",
+    r"h/o\s+cardiac\s+arrest",
+    r"history\s+of\s+cardiac\s+arrest",
+    r"c/b\s+cardiac\s+arrest",
+    r"complicated\s+by\s+cardiac\s+arrest",
+    r"prior\s+cardiac\s+arrest",
+    r"previous\s+cardiac\s+arrest",
+    r"past\s+cardiac\s+arrest",
+    r"pmh\w*.{0,50}cardiac\s+arrest",
+    r"icd\s+.{0,50}cardiac\s+arrest",
+]
+
+# Current-arrest patterns that override the PMH shortcut
+CURRENT_ARREST_OVERRIDE_PATTERNS = [
+    r"presents?\s+(?:to\s+(?:ed|er|emergency)\s+)?via\s+ems\s+for\s+(?:cardiac\s+)?arrest",
+    r"status\s+post\s+cardiac\s+arrest\s+(?:with|now|currently|presenting|p/w)",
+    r"p/w\s+(?:s/p\s+)?cardiac\s+arrest",
+    r"presents?\s+(?:to\s+(?:ed|er))?\s+for\s+cardiac\s+arrest",
+    r"no\s+(?:rosc|pulse|pulses?)\s+on\s+(?:arrival|presentation)",
+    r"acls\s+(?:performed|initiated|started|done)\s+for\s+(?:approximately\s+)?\d+",
+    r"brought\s+(?:in\s+)?(?:by|via)\s+ems\s+(?:in\s+)?(?:cardiac\s+)?arrest",
+]
+
+# ── Outside-hospital patterns (Step 2 boost) ─────────────────────────────────
+OUTSIDE_ARREST_PATTERNS = [
+    r"found\s+(?:down|unresponsive|pulseless)\s+(?:at\s+)?(?:home|outside|in\s+the\s+field|at\s+scene)",
+    r"bystander\s+cpr",
+    r"ems\s+(?:initiated|started|performed|found|arrived)",
+    r"911\s+called",
+    r"paramedic",
+    r"ambulance",
+    r"scene",
+    r"field\s+(?:resuscitation|cpr|rosc)",
+    r"rosc\s+(?:in|achieved\s+in)\s+(?:field|scene|pre-?hospital)",
+    r"pre-?hospital\s+(?:arrest|rosc|cpr)",
+    r"presents?\s+(?:to\s+(?:ed|er|emergency)\s+)?via\s+ems",
+    r"via\s+ems\s+for\s+(?:cardiac\s+)?arrest",
+    r"brought\s+(?:to\s+)?(?:ed|er)\s+(?:via|by)\s+ems",
+]
+
+# ── Trauma exclusion patterns (auto-No without LLM call) ─────────────────────
+TRAUMA_PATTERNS = [
+    r"gunshot",
+    r"gsw",
+    r"stab(?:bing)?",
+    r"penetrating\s+trauma",
+    r"blunt\s+trauma",
+    r"mvc",
+    r"motor\s+vehicle\s+(?:accident|collision|crash)",
+    r"traumatic\s+arrest",
+    r"traumatic\s+cardiac\s+arrest",
+    r"drowning",
+    r"hanging",
+    r"electrocution",
+]
+
+# ── Transfer exclusion patterns (auto-No without LLM call) ───────────────────
+TRANSFER_PATTERNS = [
+    r"transfer(?:red)?\s+from\s+(?:outside|another|external|outside\s+hospital)",
+    r"transferred\s+from\s+(?:an?\s+)?(?:osh|outside\s+hospital)",
+    r"outside\s+hospital\s+transfer",
+    r"inter-?facility\s+transfer",
+    r"(?:osh|outside\s+hospital)\s+(?:transfer|cath|cath\s+lab)",
+]
+
+# ── Output labels ─────────────────────────────────────────────────────────────
+LABEL_OHCA      = "Yes"
+LABEL_NOT_OHCA  = "No"
+LABEL_TRAUMATIC = "Traumatic"
+LABEL_TRANSFER  = "Transfer"
+LABEL_SKIP      = "Skipped"      # Note too short / no text
+
+# ── Processing ────────────────────────────────────────────────────────────────
+MIN_NOTE_WORDS = 100             # Notes shorter than this are skipped
