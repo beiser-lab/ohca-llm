@@ -38,30 +38,24 @@ logger = logging.getLogger(__name__)
 
 STEP1_PROMPT = """You are a physician reviewing an emergency department note.
 
-Your task: Determine whether this note describes a patient who is CURRENTLY experiencing a cardiac arrest (or arrived in cardiac arrest) at this ED visit.
+Your task: Determine whether this encounter involves an ACUTE cardiac arrest event — one that occurred during this presentation or immediately before it (e.g., brought in by EMS after arresting).
 
-Do NOT count:
-- A cardiac arrest that happened in the past (history of, s/p, prior)
-- A cardiac arrest at another facility that is now resolved
-- A patient who came in for something else and has "cardiac arrest" in their past medical history
+Count as YES regardless of the OUTCOME of the arrest. All of these are YES:
+- The patient is still in cardiac arrest / actively receiving CPR
+- The patient achieved ROSC (return of spontaneous circulation) and now has a pulse
+- The patient was resuscitated and admitted (e.g., to the ICU or cath lab)
+- The patient died / was pronounced dead / "time of death" was called during this encounter
+A resolved or fatal arrest is STILL an acute arrest event for this purpose. Do not answer NO
+just because the arrest is no longer ongoing, the patient has a pulse, or the patient has died.
 
-Answer with ONLY one of these two words: YES or NO.
-Then on a new line, write one sentence explaining your reasoning.
+Answer NO only if:
+- The arrest is purely HISTORICAL (happened on a prior admission or in the remote past;
+  "history of cardiac arrest", "s/p arrest [months/years ago]")
+- "Cardiac arrest" appears only in the past medical history and no acute arrest occurred this encounter
+- No cardiac arrest actually occurred (the term is negated or hypothetical)
 
----
-CLINICAL NOTE:
-{note}
----
-
-Answer (YES or NO):"""
-
-STEP2_PROMPT = """You are a physician reviewing an emergency department note.
-
-The patient in this note had a CURRENT cardiac arrest. Your task: Determine whether the cardiac arrest started OUTSIDE the hospital (i.e., the patient collapsed outside, at home, at a scene, or in the field — and EMS/bystanders responded).
-
-Do NOT count:
-- Arrests that started INSIDE a hospital (floor arrest, ICU arrest, code blue after admission)
-- Arrests that started in a procedure room, OR, or another in-hospital setting
+Note: a "time of death" written as a 4-digit clock time (e.g. "time of death 2010" = 20:10)
+is a TIME, not a calendar year — it does not make the arrest historical.
 
 Answer with ONLY one of these two words: YES or NO.
 Then on a new line, write one sentence explaining your reasoning.
@@ -73,18 +67,58 @@ CLINICAL NOTE:
 
 Answer (YES or NO):"""
 
-STEP3_PROMPT = """You are a physician reviewing an emergency department note.
+STEP2_PROMPT = """You are a physician reviewing a clinical note (it may be an ED note, a cath lab / procedure note, or an admission note).
 
-The patient had an out-of-hospital cardiac arrest. Your task: Determine whether the arrest was NON-TRAUMATIC (i.e., from a medical cause such as heart disease, arrhythmia, or unknown cause).
+The patient in this note had an acute cardiac arrest. Your task: Determine whether the CARDIAC ARREST ITSELF began OUTSIDE the hospital — before the patient arrived at or was inside this hospital.
 
-Answer NO if:
-- The arrest was caused by a gunshot wound, stabbing, or penetrating injury
-- The arrest was caused by blunt trauma (MVC, fall, assault)
-- The arrest was caused by drowning, hanging, or electrocution
+Focus on WHERE AND WHEN THE ARREST HAPPENED, not on where the patient came from or why they
+first presented. The patient's illness may have started outside, but that is not the question —
+the question is specifically where the ARREST occurred.
 
-Answer YES if:
-- The arrest appears to be from a cardiac, respiratory, or other medical cause
-- The cause is unclear but no traumatic mechanism is mentioned
+Answer YES if the ARREST began outside the hospital:
+- Collapsed at home, at a scene, in the field, in public, at a nursing home / SNF, etc.
+- Arrested before or during EMS transport; EMS/bystander CPR before arrival
+- The patient "arrived in arrest", "found down", "brought in by EMS after arrest", "s/p ROSC" from a field arrest
+- (A brief, single line stating a field/EMS/out-of-hospital arrest is sufficient even in a
+  cath lab or admission note that omits the full prehospital narrative.)
+
+Answer NO if the ARREST began inside this hospital — EVEN IF the patient originally came from
+outside for a different problem:
+- The patient presented (walked in, or was brought by EMS) for something ELSE — chest pain,
+  STEMI, altered mental status, sepsis, shortness of breath — and THEN arrested while in the
+  ED or after admission. This is an IN-hospital (in-ED) arrest, answer NO.
+- Floor arrest, ICU arrest, code blue after admission, arrest in a procedure room / OR.
+- Key test: if the patient had a pulse on arrival and lost it later while in the ED/hospital,
+  the arrest was IN-hospital -> NO, regardless of why they first presented.
+
+Answer with ONLY one of these two words: YES or NO.
+Then on a new line, write one sentence explaining your reasoning: state explicitly WHERE the arrest occurred.
+
+---
+CLINICAL NOTE:
+{note}
+---
+
+Answer (YES or NO):"""
+
+STEP3_PROMPT = """You are a physician reviewing a clinical note.
+
+The patient had a cardiac arrest. Your task: Determine whether the arrest was caused by TRAUMA (a physical injury mechanism).
+
+Answer YES (traumatic) only if the arrest was caused by an injury mechanism such as:
+- Gunshot wound, stabbing, or penetrating injury
+- Blunt trauma (motor vehicle crash, fall from height, assault)
+- Drowning, hanging/strangulation, or electrocution
+
+Answer NO (non-traumatic / medical) if:
+- The arrest was from a medical cause — cardiac, arrhythmia (VF/VT/PEA/asystole), respiratory,
+  metabolic, STEMI, heart failure, ESRD/electrolyte, overdose, or any illness
+- The cause is unclear or unknown, but NO traumatic injury mechanism is described
+- The note only mentions incidental/minor injury (e.g., a fall AT THE TIME of collapse from the
+  arrest itself, CPR-related rib fracture) without trauma being the CAUSE of the arrest
+
+Focus on the CAUSE of the arrest. A medical arrest is NO even if the patient collapsed, fell,
+or was found down — collapsing is not a traumatic mechanism unless injury caused the arrest.
 
 Answer with ONLY one of these two words: YES or NO.
 Then on a new line, write one sentence explaining your reasoning.
@@ -135,10 +169,10 @@ STEPS = [
      "Outside-hospital origin",
      LABEL_NOT_OHCA,
      False),
-    ("step3_non_traumatic", STEP3_PROMPT,
-     "Non-traumatic cause",
+    ("step3_is_traumatic", STEP3_PROMPT,
+     "Traumatic cause",
      LABEL_TRAUMATIC,
-     False),
+     True),            # inverted: YES = traumatic = fail
     ("step4_is_transfer", STEP4_PROMPT,
      "Transfer from another facility",
      LABEL_TRANSFER,
