@@ -69,30 +69,32 @@ Answer (YES or NO):"""
 
 STEP2_PROMPT = """You are a physician reviewing a clinical note (it may be an ED note, a cath lab / procedure note, or an admission note).
 
-The patient in this note had an acute cardiac arrest. Your task: Determine whether the CARDIAC ARREST ITSELF began OUTSIDE the hospital — before the patient arrived at or was inside this hospital.
+The patient in this note had an acute cardiac arrest. Your task: Determine whether the patient's FIRST (index) cardiac arrest began OUTSIDE the hospital — before they arrived at or were inside this hospital.
 
-Focus on WHERE AND WHEN THE ARREST HAPPENED, not on where the patient came from or why they
-first presented. The patient's illness may have started outside, but that is not the question —
-the question is specifically where the ARREST occurred.
+Focus on WHERE THE FIRST ARREST HAPPENED, not on where the patient came from or why they first
+presented, and not on whether they later had additional arrests.
 
-Answer YES if the ARREST began outside the hospital:
+Answer YES if the FIRST arrest began outside the hospital:
 - Collapsed at home, at a scene, in the field, in public, at a nursing home / SNF, etc.
-- Arrested before or during EMS transport; EMS/bystander CPR before arrival
-- The patient "arrived in arrest", "found down", "brought in by EMS after arrest", "s/p ROSC" from a field arrest
+- Arrested before OR during EMS transport (in the ambulance); bystander/EMS CPR before arrival
+- "Arrived in arrest", "found down", "brought in by EMS after arrest", "s/p ROSC" from a field/EMS arrest
+- IMPORTANT: If the patient arrested outside (field or ambulance), achieved ROSC, arrived with a
+  pulse, and then RE-ARRESTED in the ED, the answer is still YES — the index arrest was
+  out-of-hospital. Re-arrest in the ED after an out-of-hospital arrest does NOT make it in-hospital.
 - (A brief, single line stating a field/EMS/out-of-hospital arrest is sufficient even in a
   cath lab or admission note that omits the full prehospital narrative.)
 
-Answer NO if the ARREST began inside this hospital — EVEN IF the patient originally came from
-outside for a different problem:
-- The patient presented (walked in, or was brought by EMS) for something ELSE — chest pain,
-  STEMI, altered mental status, sepsis, shortness of breath — and THEN arrested while in the
-  ED or after admission. This is an IN-hospital (in-ED) arrest, answer NO.
-- Floor arrest, ICU arrest, code blue after admission, arrest in a procedure room / OR.
-- Key test: if the patient had a pulse on arrival and lost it later while in the ED/hospital,
-  the arrest was IN-hospital -> NO, regardless of why they first presented.
+Answer NO only if the patient's FIRST arrest began inside this hospital, with NO prior arrest outside:
+- The patient presented (walked in, or brought by EMS) for something ELSE — chest pain, STEMI,
+  altered mental status, sepsis, shortness of breath — had a pulse throughout arrival, and then
+  arrested for the FIRST time while in the ED or after admission. Answer NO.
+- Floor arrest, ICU arrest, code blue after admission, arrest in a procedure room / OR, with no
+  preceding out-of-hospital arrest.
+- Key test: NO only if the ONLY arrest(s) occurred after the patient was already inside the
+  hospital. If ANY arrest occurred in the field or ambulance before arrival, answer YES.
 
 Answer with ONLY one of these two words: YES or NO.
-Then on a new line, write one sentence explaining your reasoning: state explicitly WHERE the arrest occurred.
+Then on a new line, write one sentence explaining your reasoning: state WHERE the FIRST arrest occurred.
 
 ---
 CLINICAL NOTE:
