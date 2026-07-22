@@ -98,14 +98,14 @@ Answer (YES or NO):"""
 
 STEP4_PROMPT = """You are a physician reviewing an emergency department note.
 
-The patient had a non-traumatic out-of-hospital cardiac arrest. Your task: Determine whether this patient was seen at THIS emergency department as their FIRST point of contact (i.e., they were NOT transferred from another hospital or facility).
+The patient had a non-traumatic out-of-hospital cardiac arrest. Your task: Determine whether this patient was TRANSFERRED to this emergency department from another hospital or acute-care facility (i.e., they were seen somewhere else first and then moved here).
 
-Answer NO if:
-- The patient was transferred from an outside hospital, clinic, or facility
+Answer YES if:
+- The patient was transferred from an outside hospital, clinic, or acute-care facility
 - The note mentions "transferred from OSH", "outside hospital transfer", or similar
 - The patient went to another ED first and is now being transferred here
 
-Answer YES if:
+Answer NO if:
 - EMS brought the patient directly to this ED
 - The patient collapsed and was brought here as the first ED
 - There is no mention of prior hospital contact
@@ -120,23 +120,29 @@ CLINICAL NOTE:
 
 Answer (YES or NO):"""
 
+# Each step: (key, prompt, display_name, fail_label, invert)
+#   Normal step (invert=False): a YES answer PASSES, a NO answer FAILS -> fail_label.
+#   Inverted step (invert=True): a YES answer FAILS -> fail_label, a NO answer PASSES.
+# Inversion lets a criterion be phrased positively even when a "yes" means EXCLUDE
+# (e.g. step 4 asks "was this a transfer?" — yes = transfer = exclude). Positive
+# phrasing avoids the double-negative that made models flip the polarity of the answer.
 STEPS = [
     ("step1_current_arrest", STEP1_PROMPT,
      "Current cardiac arrest",
      LABEL_NOT_OHCA,   # label if step fails
-     None),            # override label (trauma/transfer) — n/a for step 1
+     False),
     ("step2_outside_hospital", STEP2_PROMPT,
      "Outside-hospital origin",
      LABEL_NOT_OHCA,
-     None),
+     False),
     ("step3_non_traumatic", STEP3_PROMPT,
      "Non-traumatic cause",
      LABEL_TRAUMATIC,
-     None),
-    ("step4_not_transfer", STEP4_PROMPT,
-     "Not a transfer",
+     False),
+    ("step4_is_transfer", STEP4_PROMPT,
+     "Transfer from another facility",
      LABEL_TRANSFER,
-     None),
+     True),            # inverted: YES = transfer = fail
 ]
 
 
@@ -262,7 +268,7 @@ def classify_note(
 
     rationale_parts = []
 
-    for step_key, prompt_template, step_name, fail_label, _ in STEPS:
+    for step_key, prompt_template, step_name, fail_label, invert in STEPS:
         prompt = prompt_template.format(note=note_text[:3000])  # truncate for token budget
 
         try:
@@ -275,6 +281,10 @@ def classify_note(
 
         is_yes, rationale = _parse_yes_no(raw_response)
 
+        # An inverted step fails on YES (e.g. "is this a transfer?" yes = exclude);
+        # a normal step fails on NO. step_passed collapses both cases.
+        step_passed = (not is_yes) if invert else is_yes
+
         result["step_responses"][step_key] = {
             "answer":    "YES" if is_yes else "NO",
             "rationale": rationale,
@@ -283,10 +293,11 @@ def classify_note(
         rationale_parts.append(f"[{step_name}] {rationale}")
 
         if verbose:
-            print(f"  {step_name}: {'✓ YES' if is_yes else '✗ NO'}")
+            print(f"  {step_name}: {'✓ YES' if is_yes else '✗ NO'} "
+                  f"({'passed' if step_passed else 'FAILED'})")
             print(f"    → {rationale}")
 
-        if not is_yes:
+        if not step_passed:
             # Step failed — assign the failure label and stop
             result["llm_label"]      = fail_label
             result["llm_confidence"] = result["steps_passed"] / len(STEPS)
