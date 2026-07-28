@@ -173,15 +173,20 @@ class OHCALLMPipeline:
         -------
         dict
         """
-        from .preprocessor import clean_text, keyword_gate, trauma_shortcut
+        from .preprocessor import clean_text, keyword_gate, short_note_has_ohca_signal, trauma_shortcut
         from .preprocessor import transfer_shortcut, pmh_shortcut
         from .config import MIN_NOTE_WORDS
 
         text = clean_text(note_text)
+        short_note_signal = short_note_has_ohca_signal(text)
 
-        if len(text.split()) < MIN_NOTE_WORDS:
+        if len(text.split()) == 0:
             return {"final_label": LABEL_SKIP, "predicted_ohca": 0,
-                    "llm_label": None, "llm_rationale": "Note too short"}
+                    "llm_label": None, "llm_rationale": "Blank note"}
+
+        if len(text.split()) < MIN_NOTE_WORDS and not short_note_signal:
+            return {"final_label": LABEL_SKIP, "predicted_ohca": 0,
+                    "llm_label": None, "llm_rationale": "Short note without strong OHCA signal"}
 
         if not keyword_gate(text):
             return {"final_label": LABEL_NOT_OHCA, "predicted_ohca": 0,

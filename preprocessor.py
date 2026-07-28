@@ -7,6 +7,7 @@ import pandas as pd
 from typing import Optional
 from .config import (
     CARDIAC_KEYWORDS,
+    SHORT_NOTE_STRONG_OHCA_PATTERNS,
     PMH_ONLY_PATTERNS,
     CURRENT_ARREST_OVERRIDE_PATTERNS,
     TRAUMA_PATTERNS,
@@ -48,6 +49,18 @@ def keyword_gate(text: str) -> bool:
     """
     lower = text.lower()
     return any(kw in lower for kw in CARDIAC_KEYWORDS)
+
+
+def short_note_has_ohca_signal(text: str) -> bool:
+    """
+    Return True when a brief note contains a strong current-OHCA cue.
+
+    This is deliberately narrower than keyword_gate: a short note should not be
+    skipped only when the sparse text is itself clinically decisive enough to
+    justify sending it to the LLM.
+    """
+    lower = text.lower()
+    return any(re.search(pattern, lower) for pattern in SHORT_NOTE_STRONG_OHCA_PATTERNS)
 
 
 def pmh_shortcut(text: str) -> bool:
@@ -110,10 +123,13 @@ def preprocess_notes(
     df["clean_text"] = df[text_col].apply(clean_text)
     df["word_count"]  = df["clean_text"].apply(lambda t: len(t.split()))
     df["keyword_positive"] = df["clean_text"].apply(keyword_gate)
+    df["short_note_ohca_signal"] = df["clean_text"].apply(short_note_has_ohca_signal)
 
     def _pre_filter(row) -> Optional[str]:
         text = row["clean_text"]
-        if row["word_count"] < MIN_NOTE_WORDS:
+        if row["word_count"] == 0:
+            return LABEL_SKIP
+        if row["word_count"] < MIN_NOTE_WORDS and not row["short_note_ohca_signal"]:
             return LABEL_SKIP
         if not row["keyword_positive"]:
             return LABEL_NOT_OHCA
@@ -131,10 +147,12 @@ def preprocess_notes(
     n_total  = len(df)
     n_llm    = df["needs_llm"].sum()
     n_kw_pos = df["keyword_positive"].sum()
+    n_short_rescued = ((df["word_count"] < MIN_NOTE_WORDS) & df["short_note_ohca_signal"]).sum()
     pct      = 100 * n_llm / n_total if n_total else 0
 
     print(f"[preprocess_notes] {n_total:,} total notes")
     print(f"  Keyword-positive : {n_kw_pos:,}  ({100*n_kw_pos/n_total:.1f}%)")
+    print(f"  Short-note rescue: {n_short_rescued:,}")
     print(f"  Needs LLM        : {n_llm:,}  ({pct:.1f}% of total)")
     print(f"  Pre-filtered out : {n_total - n_llm:,}")
 

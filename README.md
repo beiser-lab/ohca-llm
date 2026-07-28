@@ -6,7 +6,8 @@ Python package for detecting out-of-hospital cardiac arrest (OHCA) from emergenc
 
 - Cleans emergency department note text and de-identification placeholders.
 - Applies cardiac-arrest keyword screening before LLM inference.
-- Short-circuits historical arrest, traumatic arrest, transfer, and short-note cases.
+- Short-circuits historical arrest, traumatic arrest, transfer, and non-informative short-note cases.
+- Sends short notes to the LLM when they contain strong current-OHCA cues such as cardiac arrest, CPR, ROSC, field/EMS arrest, or pulseless rhythms.
 - Runs a four-step binary reasoning pipeline for likely OHCA notes.
 - Returns annotated `pandas` DataFrames with final labels and binary OHCA predictions.
 
@@ -62,6 +63,7 @@ The pipeline appends fields including:
 - `clean_text`
 - `word_count`
 - `keyword_positive`
+- `short_note_ohca_signal`
 - `pre_filter_label`
 - `needs_llm`
 - `llm_label`

@@ -40,6 +40,21 @@ CARDIAC_KEYWORDS = [
     "code blue",
 ]
 
+# Short notes can still be definitive OHCA evidence. These regexes allow a
+# sub-threshold note to reach the LLM when it contains a strong current-arrest
+# cue; note length is kept as an audit flag, not a terminal exclusion.
+SHORT_NOTE_STRONG_OHCA_PATTERNS = [
+    r"\bcardiac\s+arrest\b",
+    r"\b(?:s/?p|status\s+post)\s+(?:cardiac\s+)?arrest\b",
+    r"\b(?:arrived|brought\s+in|presents?|presenting)\s+(?:in|after|s/?p)?\s*(?:cardiac\s+)?arrest\b",
+    r"\b(?:found|found\s+down|found\s+unresponsive)\b.{0,80}\b(?:cpr|arrest|pulseless|rosc)\b",
+    r"\b(?:cpr|compressions?|acls|bls)\b.{0,80}\b(?:ems|field|scene|prehospital|pre-?hospital|arrival|arrest)\b",
+    r"\b(?:ems|field|scene|prehospital|pre-?hospital)\b.{0,80}\b(?:cpr|compressions?|rosc|arrest|pulseless)\b",
+    r"\b(?:rosc|return\s+of\s+spontaneous\s+circulation)\b",
+    r"\b(?:pea|asystole|vfib|v-?fib|ventricular\s+fibrillation|v-?tach|vtach|ventricular\s+tachycardia)\b.{0,80}\b(?:arrest|cpr|rosc|pulseless)\b",
+    r"\bno\s+(?:pulse|pulses?|rosc)\s+on\s+(?:arrival|presentation)\b",
+]
+
 # ── PMH shortcut ─────────────────────────────────────────────────────────────
 # If note contains ONLY historical arrest language (no current indicators),
 # skip LLM and label as Not OHCA immediately.
@@ -117,4 +132,4 @@ LABEL_TRANSFER  = "Transfer"
 LABEL_SKIP      = "Skipped"      # Note too short / no text
 
 # ── Processing ────────────────────────────────────────────────────────────────
-MIN_NOTE_WORDS = 100             # Notes shorter than this are skipped
+MIN_NOTE_WORDS = 100             # Short notes without strong OHCA signal are skipped
