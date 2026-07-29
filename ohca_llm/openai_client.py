@@ -13,6 +13,8 @@ from dataclasses import dataclass
 
 import requests
 
+from .config import QWEN_BASE_URL, QWEN_MODEL
+
 
 RETRYABLE_STATUS = {409, 429, 500, 502, 503, 504}
 
@@ -21,8 +23,8 @@ RETRYABLE_STATUS = {409, 429, 500, 502, 503, 504}
 class OpenAIChatClient:
     """Minimal OpenAI-compatible chat client for deterministic local scoring."""
 
-    base_url: str = "http://127.0.0.1:8000/v1"
-    model: str = "Qwen2.5-7B-Instruct"
+    base_url: str = QWEN_BASE_URL
+    model: str = QWEN_MODEL
     retries: int = 5
     backoff: float = 2.0
     timeout: int = 180

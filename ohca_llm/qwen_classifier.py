@@ -81,9 +81,7 @@ def classify_note_qwen(
     }
     rationale_parts = []
 
-    for step in STEPS:
-        step_key, prompt_template, step_name, fail_label = step[:4]
-        invert = bool(step[4]) if len(step) > 4 and step[4] is True else False
+    for step_key, prompt_template, step_name, fail_label, invert in STEPS:
         prompt = prompt_template.format(note=str(note_text)[:note_char_cap])
 
         try:

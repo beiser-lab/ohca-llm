@@ -30,7 +30,13 @@ from collections import Counter
 
 import pandas as pd
 
-from .config import LABEL_NOT_OHCA, LABEL_SKIP, MIN_NOTE_WORDS
+from .config import (
+    LABEL_NOT_OHCA,
+    LABEL_SKIP,
+    MIN_NOTE_WORDS,
+    QWEN_BASE_URL,
+    QWEN_MODEL,
+)
 from .openai_client import OpenAIChatClient
 from .preprocessor import (
     clean_text,
@@ -60,8 +66,8 @@ def main() -> None:
     score_csv.add_argument("--input", "--union", dest="input", required=True)
     score_csv.add_argument("--out", required=True)
     score_csv.add_argument("--text-col", default=DEFAULT_TEXT_COL)
-    score_csv.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
-    score_csv.add_argument("--model", default="Qwen2.5-7B-Instruct")
+    score_csv.add_argument("--base-url", default=QWEN_BASE_URL)
+    score_csv.add_argument("--model", default=QWEN_MODEL)
     score_csv.add_argument("--note-char-cap", type=int, default=3000)
     score_csv.add_argument("--max-tokens", type=int, default=400)
     score_csv.add_argument("--limit", type=int, default=None)
@@ -83,10 +89,46 @@ def main() -> None:
         action="store_true",
         help="Do not rescue nursing-home/home origins from transfer labels.",
     )
+
+    validate = subparsers.add_parser(
+        "validate",
+        help="Run the sequential Qwen classifier over a labeled validation set "
+             "and report metrics with a hard-negative breakdown.",
+    )
+    validate.add_argument(
+        "--input",
+        help="CSV of reviewed cases with a ground-truth label column. "
+             "Omit with --synthetic to use the PHI-free fixture.",
+    )
+    validate.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Use the built-in PHI-free synthetic validation set instead of --input.",
+    )
+    validate.add_argument("--out", default=None,
+                          help="Optional path to write per-case scored results.")
+    validate.add_argument("--text-col", default="note_text")
+    validate.add_argument("--label-col", default="manual_label")
+    validate.add_argument("--category-col", default="category")
+    validate.add_argument("--id-col", default="id")
+    validate.add_argument("--base-url", default=QWEN_BASE_URL)
+    validate.add_argument("--model", default=QWEN_MODEL)
+    validate.add_argument("--note-char-cap", type=int, default=3000)
+    validate.add_argument("--max-tokens", type=int, default=400)
+    validate.add_argument("--no-seed", action="store_true")
+    validate.add_argument("--thinking", action="store_true")
+    validate.add_argument(
+        "--no-residential-rescue",
+        action="store_true",
+        help="Do not rescue nursing-home/home origins from transfer labels.",
+    )
+
     args = parser.parse_args()
 
     if args.command == "score-csv":
         score_csv_command(args)
+    elif args.command == "validate":
+        validate_command(args)
 
 
 def score_csv_command(args: argparse.Namespace) -> None:
@@ -226,6 +268,61 @@ def score_csv_command(args: argparse.Namespace) -> None:
     if n_unscored:
         print(f"  {'(unscored)':12s}: {n_unscored:6d}")
     print(f"\nWrote {args.out}")
+
+
+def validate_command(args: argparse.Namespace) -> None:
+    """Validate the sequential Qwen classifier against a labeled set."""
+
+    from .validation import run_validation, summarize, format_report
+
+    if args.synthetic:
+        from .validation_fixtures import load_synthetic_validation_set
+
+        df = load_synthetic_validation_set()
+        print(f"[validate] using synthetic PHI-free set ({len(df)} cases)")
+    else:
+        if not args.input:
+            raise SystemExit("Provide --input CSV or pass --synthetic.")
+        if not os.path.exists(args.input):
+            raise SystemExit(f"Input CSV not found: {args.input}")
+        df = pd.read_csv(args.input)
+        print(f"[validate] loaded {len(df)} cases from {args.input}")
+
+    if args.label_col not in df.columns:
+        raise SystemExit(
+            f"Ground-truth column '{args.label_col}' not found. "
+            f"Columns: {list(df.columns)}"
+        )
+
+    client = OpenAIChatClient(
+        base_url=args.base_url,
+        model=args.model,
+        send_seed=not args.no_seed,
+        disable_thinking=not args.thinking,
+    )
+
+    scored = run_validation(
+        df,
+        client,
+        text_col=args.text_col,
+        label_col=args.label_col,
+        category_col=args.category_col,
+        id_col=args.id_col,
+        note_char_cap=args.note_char_cap,
+        max_tokens=args.max_tokens,
+        rescue_residential_origin=not args.no_residential_rescue,
+    )
+
+    summary = summarize(
+        scored,
+        label_col=args.label_col,
+        category_col=args.category_col,
+    )
+    print("\n" + format_report(summary))
+
+    if args.out:
+        scored.to_csv(args.out, index=False)
+        print(f"\nWrote per-case results to {args.out}")
 
 
 def annotate_audit_flags(frame: pd.DataFrame, text_col: str) -> pd.DataFrame:
