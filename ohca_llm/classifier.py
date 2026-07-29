@@ -1,5 +1,5 @@
 """
-LLM classifier — 4-step zero-shot chain-of-thought reasoning via Ollama.
+Shared prompt definitions for the OHCA four-step reasoning chain.
 
 Each note that passes the pre-filters is evaluated through four sequential
 binary questions.  A note is labeled OHCA only if it passes all four steps.
@@ -9,30 +9,17 @@ Step 2 — Did the arrest start *outside* the hospital?
 Step 3 — Is the arrest *non-traumatic*? (LLM fallback for ambiguous cases)
 Step 4 — Is the patient *not* a transfer from another facility?
 
-The LLM is called once per step; early exit on any "No" answer.
+The production classifier in ``qwen_classifier.py`` calls these prompts through
+an OpenAI-compatible endpoint; this module intentionally contains no model
+runtime client.
 """
 
-import re
-import time
-import json
-import logging
-import requests
-from typing import Dict, Optional, Tuple
-
 from .config import (
-    OLLAMA_MODEL,
-    OLLAMA_URL,
-    TEMPERATURE,
-    SEED,
-    MAX_TOKENS,
     LABEL_OHCA,
     LABEL_NOT_OHCA,
     LABEL_TRAUMATIC,
     LABEL_TRANSFER,
 )
-
-logger = logging.getLogger(__name__)
-
 
 # ── Prompt templates ───────────────────────────────────────────────────────────
 
@@ -213,207 +200,3 @@ CLINICAL NOTE:
 
 JSON:"""
 
-
-# ── Ollama client ──────────────────────────────────────────────────────────────
-
-def _call_ollama(prompt: str, retries: int = 3, backoff: float = 2.0) -> str:
-    """
-    Call the local Ollama API and return the model's raw text response.
-
-    Parameters
-    ----------
-    prompt   : Full formatted prompt string.
-    retries  : Number of retry attempts on connection errors.
-    backoff  : Seconds to wait between retries (doubles each attempt).
-
-    Returns
-    -------
-    str
-        Raw model output text.
-
-    Raises
-    ------
-    RuntimeError
-        If Ollama is unreachable after all retries.
-    """
-    payload = {
-        "model":   OLLAMA_MODEL,
-        "prompt":  prompt,
-        "stream":  False,
-        "options": {
-            "temperature": TEMPERATURE,
-            "seed":        SEED,
-            "num_predict": MAX_TOKENS,
-        },
-    }
-
-    last_error = None
-    wait = backoff
-    for attempt in range(1, retries + 1):
-        try:
-            resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
-            resp.raise_for_status()
-            return resp.json().get("response", "")
-        except requests.exceptions.ConnectionError as e:
-            last_error = e
-            logger.warning(f"Ollama connection error (attempt {attempt}/{retries}). "
-                           f"Is `ollama serve` running? Retrying in {wait:.0f}s…")
-            time.sleep(wait)
-            wait *= 2
-        except requests.exceptions.RequestException as e:
-            last_error = e
-            logger.warning(f"Ollama request error (attempt {attempt}/{retries}): {e}")
-            time.sleep(wait)
-            wait *= 2
-
-    raise RuntimeError(
-        f"Could not reach Ollama at {OLLAMA_URL} after {retries} attempts. "
-        f"Make sure Ollama is running: `ollama serve` and `ollama pull {OLLAMA_MODEL}`.\n"
-        f"Last error: {last_error}"
-    )
-
-
-def _parse_yes_no(response: str) -> Tuple[bool, str]:
-    """
-    Extract YES/NO answer and rationale from the model response.
-
-    Returns
-    -------
-    (is_yes, rationale)
-        is_yes   : True if the model said YES.
-        rationale: One-sentence explanation extracted from the response.
-    """
-    lines = [l.strip() for l in response.strip().split("\n") if l.strip()]
-
-    answer_line = lines[0] if lines else ""
-    rationale   = lines[1] if len(lines) > 1 else response[:200]
-
-    # Normalize: look for YES/NO anywhere in the first line
-    upper = answer_line.upper()
-    if "YES" in upper:
-        return True, rationale
-    elif "NO" in upper:
-        return False, rationale
-    else:
-        # Fallback: search entire response
-        if re.search(r"\bYES\b", response, re.IGNORECASE):
-            return True, rationale
-        return False, rationale  # Default to No if ambiguous
-
-
-# ── Single-note classifier ─────────────────────────────────────────────────────
-
-def classify_note(
-    note_text: str,
-    verbose: bool = False,
-) -> Dict:
-    """
-    Run the 4-step LLM reasoning chain on a single note.
-
-    Parameters
-    ----------
-    note_text : str
-        Cleaned ED note text (should have already passed the keyword gate).
-    verbose   : bool
-        If True, print step-by-step decisions to stdout.
-
-    Returns
-    -------
-    dict with keys:
-        llm_label      : str  — "Yes", "No", "Traumatic", or "Transfer"
-        llm_confidence : float — naive confidence based on steps passed (0.25–1.0)
-        llm_rationale  : str  — concatenated rationale from each step
-        steps_passed   : int  — number of steps the note passed (0–4)
-        step_responses : dict — raw yes/no and rationale per step
-    """
-    result = {
-        "llm_label":      LABEL_NOT_OHCA,
-        "llm_confidence": 0.0,
-        "llm_rationale":  "",
-        "steps_passed":   0,
-        "step_responses": {},
-    }
-
-    rationale_parts = []
-
-    for step_key, prompt_template, step_name, fail_label, invert in STEPS:
-        prompt = prompt_template.format(note=note_text[:3000])  # truncate for token budget
-
-        try:
-            raw_response = _call_ollama(prompt)
-        except RuntimeError as e:
-            logger.error(f"LLM call failed at {step_key}: {e}")
-            result["llm_label"]      = "Error"
-            result["llm_rationale"]  = str(e)
-            return result
-
-        is_yes, rationale = _parse_yes_no(raw_response)
-
-        # An inverted step fails on YES (e.g. "is this a transfer?" yes = exclude);
-        # a normal step fails on NO. step_passed collapses both cases.
-        step_passed = (not is_yes) if invert else is_yes
-
-        result["step_responses"][step_key] = {
-            "answer":    "YES" if is_yes else "NO",
-            "rationale": rationale,
-            "raw":       raw_response[:500],
-        }
-        rationale_parts.append(f"[{step_name}] {rationale}")
-
-        if verbose:
-            print(f"  {step_name}: {'✓ YES' if is_yes else '✗ NO'} "
-                  f"({'passed' if step_passed else 'FAILED'})")
-            print(f"    → {rationale}")
-
-        if not step_passed:
-            # Step failed — assign the failure label and stop
-            result["llm_label"]      = fail_label
-            result["llm_confidence"] = result["steps_passed"] / len(STEPS)
-            result["llm_rationale"]  = "; ".join(rationale_parts)
-            return result
-
-        result["steps_passed"] += 1
-
-    # All 4 steps passed → OHCA confirmed
-    result["llm_label"]      = LABEL_OHCA
-    result["llm_confidence"] = 1.0
-    result["llm_rationale"]  = "; ".join(rationale_parts)
-
-    return result
-
-
-# ── Batch classifier ───────────────────────────────────────────────────────────
-
-def batch_classify(
-    notes: list,
-    verbose: bool = False,
-    progress: bool = True,
-) -> list:
-    """
-    Run classify_note on a list of note strings.
-
-    Parameters
-    ----------
-    notes    : list of str
-        Cleaned ED note texts.
-    verbose  : bool
-        Pass through to classify_note.
-    progress : bool
-        Show a simple progress counter.
-
-    Returns
-    -------
-    list of dict
-        One result dict per note (same format as classify_note).
-    """
-    results = []
-    total = len(notes)
-
-    for i, note in enumerate(notes):
-        if progress and (i % 50 == 0 or i == total - 1):
-            print(f"  [{i+1}/{total}] Processing…", flush=True)
-
-        res = classify_note(note, verbose=verbose)
-        results.append(res)
-
-    return results

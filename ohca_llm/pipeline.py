@@ -16,8 +16,9 @@ import pandas as pd
 from typing import Optional
 
 from .preprocessor import preprocess_notes
-from .classifier import classify_note
-from .config import LABEL_NOT_OHCA, LABEL_OHCA, LABEL_SKIP
+from .config import LABEL_NOT_OHCA, LABEL_OHCA, LABEL_SKIP, QWEN_BASE_URL, QWEN_MODEL
+from .openai_client import OpenAIChatClient
+from .qwen_classifier import classify_note_qwen
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +38,23 @@ class OHCALLMPipeline:
     Parameters
     ----------
     model : str
-        Ollama model tag to use (default: "llama3.2").
+        Served model name to use (default: Qwen2.5-7B-Instruct).
+    base_url : str
+        OpenAI-compatible endpoint URL.
     verbose : bool
         Print step-by-step LLM reasoning for each note.
     """
 
-    def __init__(self, model: str = "llama3.2", verbose: bool = False):
-        from .config import OLLAMA_MODEL
-        import ohca_llm.config as cfg
-        if model != OLLAMA_MODEL:
-            cfg.OLLAMA_MODEL = model  # override global
-        self.model   = model
+    def __init__(
+        self,
+        model: str = QWEN_MODEL,
+        base_url: str = QWEN_BASE_URL,
+        verbose: bool = False,
+    ):
+        self.model = model
+        self.base_url = base_url
         self.verbose = verbose
+        self.client = OpenAIChatClient(base_url=base_url, model=model)
 
     # ── Main entry point ───────────────────────────────────────────────────────
 
@@ -120,7 +126,11 @@ class OHCALLMPipeline:
                 elapsed = time.time() - t0
                 print(f"  [{i+1}/{n_llm}]  elapsed={elapsed/60:.1f}m", flush=True)
 
-            res = classify_note(note, verbose=self.verbose)
+            res = classify_note_qwen(
+                note,
+                self.client,
+                debug_raw=self.verbose,
+            )
             llm_results.append(res)
 
         # ── Merge LLM results back ─────────────────────────────────────────────
@@ -204,7 +214,11 @@ class OHCALLMPipeline:
             return {"final_label": LABEL_NOT_OHCA, "predicted_ohca": 0,
                     "llm_label": None, "llm_rationale": "Historical arrest only (PMH shortcut)"}
 
-        result = classify_note(text, verbose=self.verbose)
+        result = classify_note_qwen(
+            text,
+            self.client,
+            debug_raw=self.verbose,
+        )
         result["final_label"]    = result["llm_label"]
         result["predicted_ohca"] = 1 if result["llm_label"] == LABEL_OHCA else 0
         return result

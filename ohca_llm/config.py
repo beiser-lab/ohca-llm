@@ -14,14 +14,6 @@ TEMPERATURE    = 0.0               # Deterministic inference (greedy)
 SEED           = 42                # Passed to the server when it honors seeds
 MAX_TOKENS     = 400               # Per-step response cap (binary answer + 1 line)
 
-# ── Legacy Ollama settings (exploratory only — NOT the production path) ───────
-# The Ollama four-step chain in `classifier.py` (`classify_note`) predates the
-# Qwen/vLLM path and is retained only for reference and interpretability. The
-# single-call JSON prompt in that module is exploratory and intentionally not
-# reachable from the CLI. Do not wire these into the production scorer.
-OLLAMA_MODEL   = "llama3.2"        # Model tag to pull/run
-OLLAMA_URL     = "http://localhost:11434/api/generate"
-
 # ── Keyword gate ─────────────────────────────────────────────────────────────
 # Notes must contain ≥1 keyword to reach the LLM
 CARDIAC_KEYWORDS = [

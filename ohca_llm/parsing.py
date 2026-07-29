@@ -16,7 +16,7 @@ ANSWER_ANCHOR_RE = re.compile(
 def parse_yes_no(response: str) -> Tuple[bool, str]:
     """Return a robust YES/NO verdict and concise rationale.
 
-    The parser is designed for local reasoning models that may emit thinking
+    The parser is designed for reasoning models that may emit thinking
     text before the final answer. It strips explicit thinking blocks and then
     resolves the final answer by priority:
 

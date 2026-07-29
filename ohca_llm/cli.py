@@ -55,7 +55,7 @@ DEFAULT_TEXT_COL = "note text"
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="ohca-llm",
-        description="Score clinical notes for OHCA using a sequential local LLM chain.",
+        description="Score clinical notes for OHCA using a sequential OpenAI-compatible LLM chain.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

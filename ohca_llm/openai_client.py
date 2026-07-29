@@ -1,5 +1,5 @@
 """
-OpenAI-compatible chat transport for local LLM servers.
+OpenAI-compatible chat transport for the OHCA classifier.
 
 This module is intentionally small: it lets the classifier package talk to
 vLLM, llama.cpp, oMLX, and other servers that expose /v1/chat/completions while
@@ -21,7 +21,7 @@ RETRYABLE_STATUS = {409, 429, 500, 502, 503, 504}
 
 @dataclass
 class OpenAIChatClient:
-    """Minimal OpenAI-compatible chat client for deterministic local scoring."""
+    """Minimal OpenAI-compatible chat client for deterministic scoring."""
 
     base_url: str = QWEN_BASE_URL
     model: str = QWEN_MODEL

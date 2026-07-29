@@ -89,13 +89,6 @@ Scoring appends fields including:
 - `llm_ran` / `llm_gated_reason`
 - `llm_predicted_ohca`
 
-## Legacy / exploratory components
-
-The Ollama four-step chain (`classify_note`) and the single-call JSON prompt in
-`ohca_llm.classifier` predate the Qwen/vLLM path and are retained for reference
-and interpretability only. They are not part of the production scorer and are
-not reachable from the CLI.
-
 ## Validation
 
 Performance depends on model and dataset. Establish sensitivity/specificity per
