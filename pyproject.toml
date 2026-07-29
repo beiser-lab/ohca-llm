@@ -16,8 +16,9 @@ dependencies = [
 [project.scripts]
 ohca-llm = "ohca_llm.cli:main"
 
-[tool.setuptools]
-packages = ["ohca_llm"]
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+testpaths = ["tests"]
 
-[tool.setuptools.package-dir]
-ohca_llm = "."
+[tool.setuptools.packages.find]
+include = ["ohca_llm*"]
