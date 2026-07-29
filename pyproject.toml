@@ -13,6 +13,9 @@ dependencies = [
     "requests>=2.31",
 ]
 
+[project.scripts]
+ohca-llm = "ohca_llm.cli:main"
+
 [tool.setuptools]
 packages = ["ohca_llm"]
 

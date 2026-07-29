@@ -17,6 +17,14 @@ Performance on UChicago C19 LDS ED notes (n=26,755; 49 confirmed OHCA):
 from .pipeline import OHCALLMPipeline
 from .preprocessor import preprocess_notes, keyword_gate
 from .classifier import classify_note, batch_classify
+from .qwen_classifier import classify_note_qwen
 
 __version__ = "6.0.0"
-__all__ = ["OHCALLMPipeline", "preprocess_notes", "keyword_gate", "classify_note", "batch_classify"]
+__all__ = [
+    "OHCALLMPipeline",
+    "preprocess_notes",
+    "keyword_gate",
+    "classify_note",
+    "batch_classify",
+    "classify_note_qwen",
+]

@@ -54,6 +54,11 @@ Answer NO only if:
 - "Cardiac arrest" appears only in the past medical history and no acute arrest occurred this encounter
 - No cardiac arrest actually occurred (the term is negated or hypothetical)
 
+Do NOT infer cardiac arrest from severe respiratory failure, hypoxemia, altered mental status,
+unresponsiveness, BiPAP, intubation, ICU admission, EMS transport, or nursing home/SNF/assisted
+living origin unless the note explicitly documents arrest, pulselessness, CPR, defibrillation,
+ROSC after arrest, code/cardiac arrest, or a pulseless arrest rhythm.
+
 Note: a "time of death" written as a 4-digit clock time (e.g. "time of death 2010" = 20:10)
 is a TIME, not a calendar year — it does not make the arrest historical.
 
@@ -180,6 +185,33 @@ STEPS = [
      LABEL_TRANSFER,
      True),            # inverted: YES = transfer = fail
 ]
+
+
+# ── Single-call combined prompt ────────────────────────────────────────────────
+# Asks all four questions in ONE model call and returns strict JSON. Same four
+# criteria and same semantics as the 4-step chain (step3/step4 phrased positively so
+# YES = exclude, matching the invert flags). ~4x fewer calls than the sequential chain;
+# used for batch scoring. The sequential chain (classify_note) is kept for interpretability
+# and as the reference the single-call output is validated against.
+COMBINED_PROMPT = """You are a physician reviewing a clinical note (ED, cath lab, or admission note). The note concerns a possible out-of-hospital cardiac arrest (OHCA). Answer FOUR questions about it.
+
+Q1 ACUTE ARREST: Did an acute cardiac arrest occur during THIS encounter or immediately before it (brought in by EMS after arresting)? Count YES regardless of outcome — still arresting, achieved ROSC, admitted, OR died/pronounced this encounter all count YES. Answer NO only if the arrest is purely HISTORICAL (a prior admission / remote past) or no arrest actually occurred. Do NOT infer cardiac arrest from severe respiratory failure, hypoxemia, altered mental status, unresponsiveness, BiPAP, intubation, ICU admission, EMS transport, or nursing home/SNF/assisted living origin unless arrest, pulselessness, CPR, defibrillation, ROSC after arrest, code/cardiac arrest, or a pulseless arrest rhythm is documented. ("Time of death 2010" = the clock time 20:10, NOT the year — not historical.)
+
+Q2 OUTSIDE-HOSPITAL: Did the patient's FIRST (index) arrest begin OUTSIDE this hospital — at home, a scene, in public, a nursing home/SNF, or before/during EMS transport (in the ambulance)? Answer YES if the first arrest was out-of-hospital, EVEN IF the patient achieved ROSC, arrived with a pulse, and then RE-ARRESTED in the ED. Answer NO only if the patient's FIRST arrest happened after they were already inside this hospital (e.g., presented with a pulse for something else — STEMI, sepsis, SOB — and then arrested in the ED for the first time).
+
+Q3 TRAUMATIC: Was the arrest CAUSED by trauma — gunshot, stabbing, penetrating injury, blunt trauma (MVC, fall, assault), drowning, hanging, or electrocution? Answer YES only if a traumatic injury mechanism caused the arrest. Answer NO for medical causes (cardiac, arrhythmia, VF/VT/PEA/asystole, respiratory, metabolic, STEMI, overdose, unknown). A collapse/fall FROM the arrest, or CPR-related injury, is NOT traumatic.
+
+Q4 TRANSFER: Was the patient TRANSFERRED to this hospital from ANOTHER hospital or acute-care facility (seen elsewhere first, then moved here)? Answer YES only for inter-facility transfer from a hospital/ED/acute-care facility. Answer NO if EMS brought them directly from the field/home/scene/nursing home (a nursing home is NOT an acute-care transfer).
+
+Respond with ONLY a JSON object, no other text:
+{{"q1_acute_arrest": "YES"|"NO", "q2_outside_hospital": "YES"|"NO", "q3_traumatic": "YES"|"NO", "q4_transfer": "YES"|"NO", "rationale": "one sentence citing the key evidence"}}
+
+---
+CLINICAL NOTE:
+{note}
+---
+
+JSON:"""
 
 
 # ── Ollama client ──────────────────────────────────────────────────────────────
