@@ -33,7 +33,11 @@ from .preprocessor import preprocess_notes, keyword_gate
 from .classifier import classify_note, batch_classify
 from .qwen_classifier import classify_note_qwen
 from .validation import run_validation, summarize, format_report
-from .validation_fixtures import load_synthetic_validation_set
+from .validation import audit_keyword_gate, format_gate_audit
+from .validation_fixtures import (
+    load_synthetic_validation_set,
+    load_keyword_negative_set,
+)
 
 __version__ = "6.0.0"
 __all__ = [
@@ -46,5 +50,8 @@ __all__ = [
     "run_validation",
     "summarize",
     "format_report",
+    "audit_keyword_gate",
+    "format_gate_audit",
     "load_synthetic_validation_set",
+    "load_keyword_negative_set",
 ]

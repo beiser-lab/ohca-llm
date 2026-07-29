@@ -273,7 +273,10 @@ def score_csv_command(args: argparse.Namespace) -> None:
 def validate_command(args: argparse.Namespace) -> None:
     """Validate the sequential Qwen classifier against a labeled set."""
 
-    from .validation import run_validation, summarize, format_report
+    from .validation import (
+        run_validation, summarize, format_report,
+        audit_keyword_gate, format_gate_audit,
+    )
 
     if args.synthetic:
         from .validation_fixtures import load_synthetic_validation_set
@@ -293,6 +296,14 @@ def validate_command(args: argparse.Namespace) -> None:
             f"Ground-truth column '{args.label_col}' not found. "
             f"Columns: {list(df.columns)}"
         )
+
+    # Deterministic gate audit first — this needs no model and answers whether
+    # the keyword gate can be trusted as the rule-out (i.e. whether
+    # --score-all-nonblank can be dropped) before spending any LLM calls.
+    gate_audit = audit_keyword_gate(
+        df, text_col=args.text_col, label_col=args.label_col
+    )
+    print("\n" + format_gate_audit(gate_audit))
 
     client = OpenAIChatClient(
         base_url=args.base_url,

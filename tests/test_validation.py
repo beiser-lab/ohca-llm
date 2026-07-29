@@ -132,8 +132,57 @@ def test_step1_gate_stops_hard_negatives_early() -> None:
     assert (non_historical["steps_passed"] == 0).all()
 
 
+def test_keyword_negative_hard_negatives_are_gated_out() -> None:
+    """The --score-all-nonblank false-positive population must be ruled out by
+    the deterministic gate without ever reaching the LLM."""
+    from ohca_llm.preprocessor import (
+        clean_text, keyword_gate, short_note_has_ohca_signal,
+    )
+    from ohca_llm.validation_fixtures import load_keyword_negative_set
+
+    kn = load_keyword_negative_set()
+    assert len(kn) >= 7
+    for _, row in kn.iterrows():
+        clean = clean_text(row["note_text"])
+        forwarded = keyword_gate(clean) or short_note_has_ohca_signal(clean)
+        assert not forwarded, (
+            f"{row['id']} was forwarded to the LLM; the gate should rule it out"
+        )
+
+
+def test_gate_audit_reports_zero_true_ohca_dropped_on_positives() -> None:
+    """Every synthetic true OHCA carries arrest vocabulary, so the gate must
+    forward all of them (recall 1.0, none dropped)."""
+    from ohca_llm.validation import audit_keyword_gate
+    from ohca_llm.validation_fixtures import load_synthetic_validation_set
+
+    audit = audit_keyword_gate(load_synthetic_validation_set())
+    assert audit["true_ohca_dropped"] == 0
+    assert audit["gate_recall_on_ohca"] == 1.0
+
+
+def test_gate_audit_flags_a_dropped_true_ohca() -> None:
+    """A keyword-free note labeled OHCA must show up as wrongly dropped, so the
+    audit actually catches gate recall failures."""
+    import pandas as pd
+    from ohca_llm.validation import audit_keyword_gate
+
+    df = pd.DataFrame(
+        {
+            "note_text": [
+                "Patient with witnessed cardiac arrest, CPR and ROSC.",  # keyworded OHCA
+                "Elderly patient found somnolent, admitted for workup.",  # no keyword, but labeled OHCA
+            ],
+            "manual_label": [1, 1],
+        }
+    )
+    audit = audit_keyword_gate(df)
+    assert audit["true_ohca_dropped"] == 1
+    assert audit["gate_recall_on_ohca"] == 0.5
+
+
 def test_report_flags_categories_with_false_positives() -> None:
-    # Construct a summary by hand to verify the report annotates FP categories.
+    # Verify the report annotates categories that contain a false positive.
     scored = pd.DataFrame(
         {
             "manual_label": [0, 1],

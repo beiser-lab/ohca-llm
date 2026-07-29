@@ -26,9 +26,89 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from .qwen_classifier import classify_note_qwen
+from .preprocessor import clean_text, keyword_gate, short_note_has_ohca_signal
 
 
 REQUIRED_COLUMNS = ("note_text", "manual_label")
+
+
+def audit_keyword_gate(
+    df: pd.DataFrame,
+    *,
+    text_col: str = "note_text",
+    label_col: str = "manual_label",
+) -> Dict:
+    """Measure the deterministic keyword gate against ground truth.
+
+    The gate is the production rule-out: notes with no cardiac-arrest keyword
+    (and no strong short-note cue) are labeled Not OHCA without any LLM call.
+    Running with ``--score-all-nonblank`` bypasses this gate and sends every
+    note to the LLM, which is how keyword-negative notes end up with positive
+    LLM labels.
+
+    The number that matters is ``true_ohca_dropped``: true OHCA cases the gate
+    would rule out. If that is zero, the gate is safe to run as the first stage
+    and ``--score-all-nonblank`` is unnecessary. Any non-zero value lists the
+    offending notes so ``CARDIAC_KEYWORDS`` can be widened deliberately.
+
+    ``would_gate`` here means "the gate forwards this note to the LLM": True if
+    the note has a keyword OR a strong short-note OHCA cue.
+    """
+
+    y_true = df[label_col].astype(int)
+    clean = df[text_col].apply(clean_text)
+    kw = clean.apply(keyword_gate)
+    short_sig = clean.apply(short_note_has_ohca_signal)
+    forwarded = kw | short_sig  # reaches the LLM under the gated path
+
+    dropped = ~forwarded
+    true_ohca = y_true == 1
+
+    dropped_true_ohca = df.index[dropped & true_ohca].tolist()
+    dropped_true_neg = int((dropped & (y_true == 0)).sum())
+
+    return {
+        "n": len(df),
+        "n_true_ohca": int(true_ohca.sum()),
+        "forwarded_to_llm": int(forwarded.sum()),
+        "ruled_out_by_gate": int(dropped.sum()),
+        "true_negatives_ruled_out": dropped_true_neg,
+        "true_ohca_dropped": len(dropped_true_ohca),
+        "true_ohca_dropped_ids": dropped_true_ohca,
+        "gate_recall_on_ohca": (
+            round(int((forwarded & true_ohca).sum()) / int(true_ohca.sum()), 4)
+            if int(true_ohca.sum()) else None
+        ),
+    }
+
+
+def format_gate_audit(audit: Dict) -> str:
+    """Render the keyword-gate audit as plain text."""
+
+    lines = [
+        "── Keyword-Gate Audit (deterministic rule-out) ──────────",
+        f"  Cases                     : {audit['n']}",
+        f"  True OHCA                 : {audit['n_true_ohca']}",
+        f"  Forwarded to LLM          : {audit['forwarded_to_llm']}",
+        f"  Ruled out by gate         : {audit['ruled_out_by_gate']}",
+        f"    of which true negatives : {audit['true_negatives_ruled_out']}",
+        f"  Gate recall on OHCA       : {audit['gate_recall_on_ohca']}",
+        f"  True OHCA WRONGLY dropped  : {audit['true_ohca_dropped']}",
+    ]
+    if audit["true_ohca_dropped"]:
+        lines.append(
+            "    ^ gate would miss these true OHCA — widen CARDIAC_KEYWORDS "
+            "before disabling --score-all-nonblank:"
+        )
+        for rid in audit["true_ohca_dropped_ids"]:
+            lines.append(f"        {rid}")
+    else:
+        lines.append(
+            "    -> gate drops no true OHCA; safe to run gated "
+            "(drop --score-all-nonblank)."
+        )
+    lines.append("─────────────────────────────────────────────────────────")
+    return "\n".join(lines)
 
 
 def run_validation(

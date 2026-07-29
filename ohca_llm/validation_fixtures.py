@@ -156,3 +156,99 @@ def load_synthetic_validation_set() -> pd.DataFrame:
     return pd.DataFrame.from_records(
         records, columns=["id", "note_text", "manual_label", "category"]
     )
+
+
+# ── Keyword-negative hard negatives ───────────────────────────────────────────
+# These are synthetic, PHI-free paraphrases modeled on real notes that received
+# a positive LLM label ONLY because --score-all-nonblank bypassed the keyword
+# gate. Every one is a genuine NOT-OHCA that contains no cardiac-arrest keyword:
+# respiratory arrest with a maintained pulse, opioid overdose reversed with
+# naloxone, AMS/stroke/seizure, mechanical falls, and near-empty notes. The
+# point of this set is to assert the deterministic gate rules them all out
+# WITHOUT an LLM call — i.e. that turning the gate back on removes these false
+# positives. Do NOT widen CARDIAC_KEYWORDS with terms like "respiratory arrest"
+# or "bagged": that would re-admit exactly these cases.
+KEYWORD_NEGATIVE_HARD_NEGATIVES: List[Dict] = [
+    {
+        "id": "kn_resp_arrest_pulse_01",
+        "manual_label": 0,
+        "category": "kwneg_respiratory_arrest",
+        "note_text": (
+            "Chief complaint respiratory arrest. Patient with asthma called EMS, "
+            "was barely talking, then stopped breathing but maintained a pulse, "
+            "so EMS placed an oral airway and assisted her breathing with a "
+            "bag-valve mask. Intubated in the ED and admitted to the ICU."
+        ),
+    },
+    {
+        "id": "kn_opioid_narcan_02",
+        "manual_label": 0,
+        "category": "kwneg_opioid_overdose",
+        "note_text": (
+            "58M with heroin use disorder, friend called EMS after he was found "
+            "unconscious on a bench. Given 2 mg naloxone IM, became alert and "
+            "answered questions. Somnolent but arousable to sternal rub, "
+            "protecting airway. Observed and discharged."
+        ),
+    },
+    {
+        "id": "kn_ams_stroke_03",
+        "manual_label": 0,
+        "category": "kwneg_ams_stroke",
+        "note_text": (
+            "70F with DM and HTN presents as a code stroke, acutely aphasic with "
+            "left gaze deviation and right arm weakness. Hypertensive, received "
+            "tPA and admitted to the stroke service."
+        ),
+    },
+    {
+        "id": "kn_seizure_04",
+        "manual_label": 0,
+        "category": "kwneg_seizure",
+        "note_text": (
+            "47F with epilepsy presents with an unwitnessed seizure at home, "
+            "postictal on EMS arrival. Awake and answering questions in the ED. "
+            "Given home antiepileptics and observed."
+        ),
+    },
+    {
+        "id": "kn_mechanical_fall_05",
+        "manual_label": 0,
+        "category": "kwneg_fall",
+        "note_text": (
+            "96F from a rehab facility brought in after a mechanical fall onto "
+            "her forearm. Alert and oriented, no head strike, no loss of "
+            "consciousness. Discharged back to the facility after imaging."
+        ),
+    },
+    {
+        "id": "kn_resp_failure_alf_06",
+        "manual_label": 0,
+        "category": "kwneg_resp_failure",
+        "note_text": (
+            "48F with COPD and HIV presents with altered mental status and "
+            "respiratory failure via EMS from an assisted living facility. "
+            "Oxygen saturation 52 percent at the facility, placed on BiPAP then "
+            "intubated. Admitted to the MICU on the ventilator."
+        ),
+    },
+    {
+        "id": "kn_empty_note_07",
+        "manual_label": 0,
+        "category": "kwneg_empty",
+        "note_text": "Erroneous documentation HPI Review of Systems Physical Exam",
+    },
+]
+
+
+def load_keyword_negative_set() -> pd.DataFrame:
+    """Return the keyword-negative hard negatives as a DataFrame.
+
+    These exist to verify the deterministic keyword gate rules out the
+    --score-all-nonblank false-positive population without any LLM call.
+    """
+
+    return pd.DataFrame.from_records(
+        KEYWORD_NEGATIVE_HARD_NEGATIVES,
+        columns=["id", "note_text", "manual_label", "category"],
+    )
